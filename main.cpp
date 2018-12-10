@@ -90,6 +90,10 @@ struct when_any_shared_state
     }
 };
 
+// https://stackoverflow.com/a/29753388/2794395
+template<int N, typename... Ts> using NthTypeOf =
+typename std::tuple_element<N, std::tuple<Ts...>>::type;
+
 template<class... Futures>
 auto when_any(Futures... futures) -> std::future<std::tuple<Futures...>>
 {
@@ -101,7 +105,8 @@ auto when_any(Futures... futures) -> std::future<std::tuple<Futures...>>
     using shared_state = when_any_shared_state<Futures...>;
 
     auto sptr = std::make_shared<shared_state>(std::move(p));
-    auto satisfy_combined_promise = [sptr](std::future<int> f)
+    using FirstType = NthTypeOf<0, Futures...>;
+    auto satisfy_combined_promise = [sptr](FirstType f)
     {
         if (!sptr->m_done.exchange(true))
         {
@@ -135,7 +140,7 @@ void solution_1()
     auto fut1 = reallyAsync(task);
     auto fut2 = reallyAsync(task);
 
-    auto f2 = then(std::move(fut1), [](std::future<int> f)
+    auto f2 = then(std::move(fut1), [](std::future<decltype(fut1.get())> f)
     {
         return f.get() * 2;
     });
@@ -152,7 +157,7 @@ void solution_2()
 
     auto fut_res = when_any(std::move(fut1), std::move(fut2));
 
-    auto fut3 = then(std::move(std::get<0>(fut_res.get())), [](std::future<int> f)
+    auto fut3 = then(std::move(std::get<0>(fut_res.get())), [](std::future<decltype(fut1.get())> f)
     {
         return f.get() * 2;
     });
