@@ -1,6 +1,7 @@
 #include <iostream>
 #include <future>
 #include <chrono>
+#include <cxxabi.h>
 
 #define LOG if (::logger::m_level == ::logger::level::VERBOSE) std::puts(__PRETTY_FUNCTION__);
 
@@ -10,7 +11,7 @@ namespace logger
     {
         NONE = 0, VERBOSE = 1
     };
-    static ::logger::level m_level = ::logger::level::VERBOSE;
+    static ::logger::level m_level = ::logger::level::NONE;
 }
 
 // Scott Meyers docet
@@ -66,7 +67,7 @@ namespace detail
     };
 }
 
-template<typename Worker, typename Future>
+template<typename Future, typename Worker>
 auto then(Future m_future, Worker worker) -> std::future<decltype(worker(std::forward<Future>(m_future)))>
 {
     LOG;
@@ -90,23 +91,19 @@ struct when_any_shared_state
     }
 };
 
-// https://stackoverflow.com/a/29753388/2794395
-template<int N, typename... Ts> using NthTypeOf =
-typename std::tuple_element<N, std::tuple<Ts...>>::type;
-
 template<class... Futures>
 auto when_any(Futures... futures) -> std::future<std::tuple<Futures...>>
 {
     LOG;
     using R = std::tuple<Futures...>;
+    using shared_state = when_any_shared_state<Futures...>;
+    using future_type = std::tuple_element<0, std::tuple<Futures...>>;
+
     std::promise<R> p;
     std::future<R> result = p.get_future();
 
-    using shared_state = when_any_shared_state<Futures...>;
-
     auto sptr = std::make_shared<shared_state>(std::move(p));
-    using FirstType = NthTypeOf<0, Futures...>;
-    auto satisfy_combined_promise = [sptr](FirstType f)
+    auto satisfy_combined_promise = [sptr](typename future_type::type f)
     {
         if (!sptr->m_done.exchange(true))
         {
@@ -133,6 +130,20 @@ int task()
     return 42;
 }
 
+std::string task_s()
+{
+    LOG;
+    std::this_thread::sleep_for(std::chrono::seconds(3));
+    return "42";
+}
+
+float task_f()
+{
+    LOG;
+    std::this_thread::sleep_for(std::chrono::seconds(3));
+    return 42.0f;
+}
+
 template<typename T>
 void solution_1()
 {
@@ -152,14 +163,33 @@ template<typename T>
 void solution_2()
 {
     LOG;
-    auto fut1 = reallyAsync(task);
-    auto fut2 = reallyAsync(task);
+    auto fut1 = reallyAsync(task_s);
+    auto fut2 = reallyAsync(task_s);
 
     auto fut_res = when_any(std::move(fut1), std::move(fut2));
-
+    std::puts(typeid(fut_res).name());
+    int status;
+    char *realname = abi::__cxa_demangle(typeid(fut_res).name(), 0, 0, &status);
+    std::puts(realname);
     auto fut3 = then(std::move(std::get<0>(fut_res.get())), [](std::future<decltype(fut1.get())> f)
     {
-        return f.get() * 2;
+        return " *** " + f.get() + " *** ";
+    });
+
+    std::cout << "res: " << fut3.get() << std::endl;
+}
+
+template<typename T>
+void solution_3()
+{
+    LOG;
+    auto fut1 = reallyAsync(task_f);
+    auto fut2 = reallyAsync(task_f);
+
+    auto fut_res = when_any(std::move(fut1), std::move(fut2));
+    auto fut3 = then(std::move(std::get<0>(fut_res.get())), [](std::future<decltype(fut1.get())> f)
+    {
+        return f.get() * 2.00001;
     });
 
     std::cout << "res: " << fut3.get() << std::endl;
@@ -168,7 +198,8 @@ void solution_2()
 int main(int argc, const char **argv)
 {
     LOG;
-    solution_1<void>();
+//    solution_1<void>();
     solution_2<void>();
+//    solution_3<void>();
     return 0;
 }
