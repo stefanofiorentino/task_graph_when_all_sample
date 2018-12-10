@@ -23,20 +23,24 @@ namespace detail
         helper(F f, W w) :
                 f(std::move(f)), w(std::move(w))
         {
+            std::puts(__PRETTY_FUNCTION__);
         }
 
         helper(const helper &other) :
                 f(other.f), w(other.w)
         {
+            std::puts(__PRETTY_FUNCTION__);
         }
 
         helper(helper &&other) noexcept :
                 f(std::move(other.f)), w(std::move(other.w))
         {
+            std::puts(__PRETTY_FUNCTION__);
         }
 
         helper &operator=(helper other)
         {
+            std::puts(__PRETTY_FUNCTION__);
             f = std::move(other.f);
             w = std::move(other.w);
             return *this;
@@ -44,27 +48,30 @@ namespace detail
 
         auto operator()() -> decltype(w(std::move(f)))
         {
+            std::puts(__PRETTY_FUNCTION__);
             f.wait();
             return w(std::move(f));
         }
     };
-
 }
 
 template<typename F, typename W>
 auto then(F f, W w) -> std::future<decltype(w(std::move(f)))>
 {
+    std::puts(__PRETTY_FUNCTION__);
     return std::async(std::launch::async, detail::helper<F, W, decltype(w(std::move(f)))>(std::move(f), std::move(w)));
 }
 
 int task()
 {
+    std::puts(__PRETTY_FUNCTION__);
     std::this_thread::sleep_for(std::chrono::seconds(3));
     return 42;
 }
 
 int main(int argc, const char **argv)
 {
+    std::puts(__PRETTY_FUNCTION__);
     std::future<int> fut1 = reallyAsync(task);
     std::future<int> fut2 = reallyAsync(task);
 
