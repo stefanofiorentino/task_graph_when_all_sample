@@ -75,52 +75,36 @@ auto then(Future m_future, Worker worker) -> std::future<decltype(worker(std::fo
                       detail::helper<Future, Worker>(std::forward<Future>(m_future), std::forward<Worker>(worker)));
 }
 
-// https://stackoverflow.com/a/46329595/2794395 (Quuxplusone)
-template<class... Futures>
-struct when_any_shared_state
+template<class T, class... Args>
+std::future<T> make_ready_future(Args &&... args)
 {
-    std::promise<std::tuple<Futures...>> m_promise;
-    std::tuple<Futures...> m_tuple;
-    std::atomic<bool> m_done;
-    std::atomic<bool> m_count_to_two;
+    std::promise<T> promise;
+    promise.set_value(T(std::forward<Args>(args)...));
+    return promise.get_future();
+}
 
-    explicit when_any_shared_state(std::promise<std::tuple<Futures...>> p) :
-            m_promise(std::move(p)), m_done(false), m_count_to_two(false)
-    {
-        LOG;
-    }
-};
-
-template<class... Futures>
-auto when_any(Futures... futures) -> std::future<std::tuple<Futures...>>
+template<class T>
+std::future<T> make_ready_future(T t)
 {
-    LOG;
-    using R = std::tuple<Futures...>;
-    using shared_state = when_any_shared_state<Futures...>;
-    using future_type = std::tuple_element<0, std::tuple<Futures...>>;
+    std::promise<T> promise;
+    promise.set_value(std::move(t));
+    return promise.get_future();
+}
 
-    std::promise<R> p;
-    std::future<R> result = p.get_future();
+std::future<std::tuple<>> when_all()
+{
+    return make_ready_future<std::tuple<>>();
+}
 
-    auto sptr = std::make_shared<shared_state>(std::move(p));
-    auto satisfy_combined_promise = [sptr](typename future_type::type f)
+template<class Head, class... Tails>
+auto when_all(Head &&head,
+              Tails &&... tails) -> std::future<std::tuple<typename std::decay<Head>::type, typename std::decay<Tails>::type...>>
+{
+    auto wait_on_tail = when_all(std::move(tails)...);
+    return then(std::forward<Head>(head), [t = std::move(wait_on_tail)](Head h) mutable
     {
-        if (!sptr->m_done.exchange(true))
-        {
-            if (sptr->m_count_to_two.exchange(true))
-            {
-                sptr->m_promise.set_value(std::move(sptr->m_tuple));
-            }
-        }
-        return f.get();
-    };
-
-    sptr->m_tuple = std::tuple<Futures...>(then(std::move(futures), satisfy_combined_promise)...);
-    if (sptr->m_count_to_two.exchange(true))
-    {
-        sptr->m_promise.set_value(std::move(sptr->m_tuple));
-    }
-    return result;
+        return tuple_cat(make_tuple(std::move(h)), t.get());
+    });
 }
 
 int task()
@@ -163,36 +147,21 @@ template<typename T>
 void solution_2()
 {
     LOG;
-    auto fut1 = reallyAsync(task_s);
-    auto fut2 = reallyAsync(task_s);
+    auto fut1 = reallyAsync(task);
+    auto fut2 = reallyAsync(task);
 
-    auto fut_res = when_any(std::move(fut1), std::move(fut2));
-    std::puts(typeid(fut_res).name());
-    int status;
-    char *realname = abi::__cxa_demangle(typeid(fut_res).name(), 0, 0, &status);
-    std::puts(realname);
-    auto fut3 = then(std::move(std::get<0>(fut_res.get())), [](std::future<decltype(fut1.get())> f)
+    auto fut_res = when_all(std::move(fut1), std::move(fut2));
+    auto t = fut_res.get();
+    auto f1 = then(std::move(std::get<0>(t)), [](std::future<decltype(fut1.get())> f)
     {
-        return " *** " + f.get() + " *** ";
+        return f.get() * 2;
     });
-
-    std::cout << "res: " << fut3.get() << std::endl;
-}
-
-template<typename T>
-void solution_3()
-{
-    LOG;
-    auto fut1 = reallyAsync(task_f);
-    auto fut2 = reallyAsync(task_f);
-
-    auto fut_res = when_any(std::move(fut1), std::move(fut2));
-    auto fut3 = then(std::move(std::get<0>(fut_res.get())), [](std::future<decltype(fut1.get())> f)
+    std::cout << "res: " << f1.get() << std::endl;
+    auto f2 = then(std::move(std::get<1>(t)), [](std::future<decltype(fut2.get())> f)
     {
-        return f.get() * 2.00001;
+        return f.get() * 2;
     });
-
-    std::cout << "res: " << fut3.get() << std::endl;
+    std::cout << "res: " << f2.get() << std::endl;
 }
 
 int main(int argc, const char **argv)
@@ -200,6 +169,5 @@ int main(int argc, const char **argv)
     LOG;
 //    solution_1<void>();
     solution_2<void>();
-//    solution_3<void>();
     return 0;
 }
