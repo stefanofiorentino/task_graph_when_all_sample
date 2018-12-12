@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.12)
 project(task_graph_when_all_sample)
 
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 14)
 
 set(CMAKE_CXX_FLAGS "-Wall -Wno-long-long -pedantic")
 

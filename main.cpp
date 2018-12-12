@@ -11,7 +11,7 @@ namespace logger
     {
         NONE = 0, VERBOSE = 1
     };
-    static ::logger::level m_level = ::logger::level::NONE;
+    static ::logger::level m_level = ::logger::level::VERBOSE;
 }
 
 // Scott Meyers docet
@@ -114,20 +114,6 @@ int task()
     return 42;
 }
 
-std::string task_s()
-{
-    LOG;
-    std::this_thread::sleep_for(std::chrono::seconds(3));
-    return "42";
-}
-
-float task_f()
-{
-    LOG;
-    std::this_thread::sleep_for(std::chrono::seconds(3));
-    return 42.0f;
-}
-
 template<typename T>
 void solution_1()
 {
@@ -164,10 +150,84 @@ void solution_2()
     std::cout << "res: " << f2.get() << std::endl;
 }
 
+// https://stackoverflow.com/a/6894436/2794395
+template<std::size_t I = 0, typename... Tp>
+inline typename std::enable_if<I == sizeof...(Tp), void>::type print(std::tuple<Tp...> &t)
+{
+    LOG;
+}
+
+template<std::size_t I = 0, typename... Tp>
+inline typename std::enable_if<I < sizeof...(Tp), void>::type print(std::tuple<Tp...> &t)
+{
+    LOG;
+    std::cout << std::get<I>(t) << std::endl;
+    print<I + 1, Tp...>(t);
+}
+
+template<std::size_t I = 0, typename... Tp>
+inline typename std::enable_if<I == sizeof...(Tp), void>::type print(std::future<std::tuple<Tp...> > &t)
+{
+    LOG;
+}
+
+template<std::size_t I = 0, typename... Tp>
+inline typename std::enable_if<I < sizeof...(Tp), void>::type print(std::future<std::tuple<Tp...> > &t)
+{
+    LOG;
+    try
+    {
+#if 1
+        int status = -1;
+        const char *realname = abi::__cxa_demangle(typeid(t).name(), nullptr, nullptr, &status);
+        std::puts(realname);
+#endif
+        if (t.valid())
+        {
+            auto t_get = t.get();
+            if (std::get<I>(t_get).valid())
+            {
+                std::cout << std::get<I>(t_get).get() << std::endl;
+            }
+        }
+    }
+    catch (std::runtime_error const &err)
+    {
+        std::cerr << err.what() << std::endl;
+        abort();
+    }
+    catch (std::exception const &err)
+    {
+        std::cerr << err.what() << std::endl;
+        abort();
+    }
+    print<I + 1, Tp...>(std::forward<decltype(t)>(t));
+}
+
+template<typename T>
+void solution_3()
+{
+    LOG;
+    auto fut1 = reallyAsync(task);
+    auto fut2 = reallyAsync(task);
+
+    auto mapped = when_all(std::move(fut1), std::move(fut2));
+#if 1
+    int status = -1;
+    const char *realname = abi::__cxa_demangle(typeid(mapped).name(), nullptr, nullptr, &status);
+    std::puts(realname);
+#endif
+    auto reduced = then(std::move(mapped), [](decltype(mapped) f_tuple)
+    {
+        print(f_tuple);
+    });
+}
+
 int main(int argc, const char **argv)
 {
     LOG;
 //    solution_1<void>();
-    solution_2<void>();
+//    solution_2<void>();
+    solution_3<void>();
     return 0;
 }
